@@ -34,19 +34,24 @@ class Player:
     def __init__(self, sprite_dict=None):
         self.sprite_dict = sprite_dict
         self.current_frame = 0
+        self.last_moved_leg = 0
 
     def tick(self):
-        self.current_frame = (self.current_frame + 1) % 3
+        self.current_frame = (self.current_frame + 1) % 4
 
-    def render(self, moving, facing, just_moved):
-        if not moving:
+    def render(self, moving, blocked, facing, just_moved, f=0):
+        if not moving and not blocked:
             if just_moved:
                 copy = self.sprite_dict[facing]['anim'][0].copy()
             else:
                 copy = self.sprite_dict[facing]['still'].copy()
-        else:
+        elif moving:
+            frame = int(f not in range(8)) + 2*self.last_moved_leg
+            copy = self.sprite_dict[facing]['anim'][frame].copy()
+        elif blocked:
             copy = self.sprite_dict[facing]['anim'][self.current_frame].copy()
-
+        else:
+            copy = self.sprite_dict[facing]['still'].copy()
         return copy
 
 class NPC:
