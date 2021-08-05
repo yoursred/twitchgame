@@ -1,8 +1,10 @@
 """
 Map
 """
+import numpy as np
 from PIL.Image import Image, open as imopen, new as imnew
 import time
+from engine.scripts import map_from_xcf
 
 checksameaxis = lambda _, __: (_[0] == __[0] and _[1] != __[1]) ^ (_[0] != __[0] and _[1] == __[1])
 
@@ -19,30 +21,69 @@ def getfacing(x, y, e):
     else:
         return e
 
+def screen_visible(x0, y0, x1, y1, w, h):
+    if (0 < x1 < w) or (0 < x0 < w) or (x0 < 0 < x1) or (x0 < w < x1):
+        x = True
+    else:
+        x = False
+    if (0 < y1 < h) or (0 < y0 < h) or (y0 < 0 < y1) or (y0 < h < y1):
+        y = True
+    else:
+        y = False
+    return x and y
+    # return (0 <= x0 < w and 0 <= y0 < h) or \
+    #        (0 <= x1 < w and 0 <= y0 < h) or \
+    #        (0 <= x0 < w and 0 <= y1 < h) or \
+    #        (0 <= x1 < w and 0 <= y1 < h)
+
 black = imnew('RGBA', (240, 160))
 
 class Map:
-    def __init__(self, background, player, default_collisions=None, spawn=(0, 0)):
-        self.background: Image = imopen(background)
+    def __init__(self, player, xcf_path=None, background=None, foreground=None, collisions=None, spawn=(0, 0)):
+        if xcf_path is not None:
+            foreground, collisions, background = map_from_xcf(xcf_path)
+        if isinstance(background, str):
+            self.background: Image = imopen(background)
+        else:
+            self.background: Image = background
+        if isinstance(foreground, str):
+            self.foreground: Image = imopen(foreground)
+        else:
+            self.foreground: Image = foreground
+        self.default_collisions: np.array = collisions
 
-        # self.background = self.background.convert('RGBA')
 
         if sum([_ % 16 for _ in self.background.size]) != 0:
             raise ValueError(
                 f'Provided background image has size {self.background.size}, not a multiple of 16'
             )
+        if background.size != foreground.size:
+            raise ValueError(
+                f'Provided foreground image has size {self.foreground.size}, different to background size of '
+                f'{self.background.size}'
+            )
+        
+        w = self.default_collisions.shape[0] * 16
+        h = self.default_collisions.shape[1] * 16
+        
+        if (w, h) != self.background.size:
+            raise ValueError(
+                f'Provided collision array has size {w//16, h//16}, does not conform to background size of '
+                f'{self.background.size}'
+            )
+
+        self.size = self.default_collisions.shape
 
         self.player = player
         self.tiles = {
             0: [],
-            1: [],
-            2: []
+            1: []
         }
         self.objects = []
-        if default_collisions is None:
-            self.default_collisions = []
-        else:
-            self.default_collisions = default_collisions
+        # if collisions is None:
+        #     self.default_collisions = []
+        # else:
+        #     self.default_collisions = collisions
 
         self.fx, self.fy = 0, 0
         self.pf = 0
@@ -59,19 +100,15 @@ class Map:
 
     def start(self):
         for tile in self.tiles[0]:
-            if 'start' in dir(tile):
                 tile.start()
         for tile in self.tiles[1]:
-            if 'start' in dir(tile):
                 tile.start()
 
     def stop(self):
         for tile in self.tiles[0]:
-            if 'stop' in dir(tile):
-                tile.start()
+                tile.stop()
         for tile in self.tiles[1]:
-            if 'stop' in dir(tile):
-                tile.start()
+                tile.stop()
 
     def collisions(self):
         for tile in self.tiles[1]:
@@ -79,7 +116,7 @@ class Map:
                 yield tile.pos
 
     def move(self, x, y):
-        if (self.cx + x, self.cy + y) in (list(self.collisions()) + self.default_collisions):
+        if (xy := (self.cx + x, self.cy + y)) in self.collisions() or self.default_collisions[xy]:
             self.player_facing = getfacing(x, y, self.player_facing)
             self.blocked = True
         elif getfacing(x, y, self.player_facing) != self.player_facing and not self.moving:
@@ -99,6 +136,9 @@ class Map:
     def tick(self):
         if self.cooldown:
             self.cooldown -= 1
+        if self.blocked and self.moving:
+            self.blocked = False
+
         if self.blocked:
             if not (self.pf % 15):
                 self.player.tick()
@@ -129,28 +169,48 @@ class Map:
                 # self.player.current_frame = 1
         self.pf = (self.pf + 1) % 60
 
-    def render(self):
+    def render(self, noplayer=False):
         blackcopy = black.copy()
         copy = self.background.copy()
         self.objects.sort(key=lambda _:_.y)
-        for tile in self.tiles[0]:
-            blackcopy.alpha_composite(tile.render(), tile.screen_pos(self.cx, self.cy, self.fx, self.fy))
-        if not self.moving:
-            blackcopy.alpha_composite(copy, ((-self.cx+7)*16, (-2*self.cy+9)*8))
 
-        else:
-            blackcopy.alpha_composite(copy, ((-self.cx+7)*16 - self.fx, (-2*self.cy+9)*8 - self.fy))
+        for tile in self.tiles[0]:
+            x0, y0 = tile.screen_pos(self.cx, self.cy, self.fx, self.fy)
+            x1, y1 = x0 + tile.width, y0 + tile.height
+            if screen_visible(x0, y0, x1, y1, 240, 160):
+                blackcopy.alpha_composite(tile.render(), (x0, y0))
+
+        blackcopy.alpha_composite(copy, ((-self.cx+7)*16 - self.fx, (-2*self.cy+9)*8 - self.fy))
+
         for tile in self.tiles[1]:
-            blackcopy.alpha_composite(tile.render(), tile.screen_pos(self.cx, self.cy, self.fx, self.fy))
-        # render(self, moving, blocked, facing, just_moved, f=0
-        player = self.player.render(self.moving, self.blocked, self.player_facing, self.just_moved, abs(self.fx + self.fy))
-        blackcopy.alpha_composite(player, (112, 64))
-        for tile in self.tiles[2]:
-            blackcopy.alpha_composite(tile.render(), tile.screen_pos(self.cx, self.cy, self.fx, self.fy))
+            x0, y0 = tile.screen_pos(self.cx, self.cy, self.fx, self.fy)
+            x1, y1 = x0 + tile.width, y0 + tile.height
+            if screen_visible(x0, y0, x1, y1, 240, 160):
+                blackcopy.alpha_composite(tile.render(), (x0, y0))
+
+        if not noplayer:
+            player = self.player.\
+                render(self.moving, self.blocked, self.player_facing, self.just_moved, abs(self.fx + self.fy))
+
+            blackcopy.alpha_composite(player, (112, 64))
+
+        blackcopy.alpha_composite(self.foreground, ((-self.cx+7)*16 - self.fx, (-2*self.cy+9)*8 - self.fy))
+
         if self.just_moved:
             self.just_moved -= 1
         self.lastframe = time.time()
         return blackcopy
+
+    def map_warp(self, o, c, d, f, pf, facing):
+        self.cx, self.cy = c[0] + o[0], c[1] + o[1]
+        self.dx, self.dy = d[0] + o[0], d[1] + o[1]
+        self.fx, self.fy = f
+        self.pf = pf
+        self.player_facing = facing
+
+    @property
+    def warpfrom(self):
+        return (self.cx, self.cy), (self.dx, self.dy), (self.fx, self.fy), self.pf, self.player_facing
 
     @property
     def fps(self):
@@ -160,3 +220,4 @@ class Map:
             return 1/ft
         else:
             return float('inf')
+

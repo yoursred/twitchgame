@@ -3,76 +3,26 @@ from engine.map_tile import MapTile, AnimatedMapTile, ScalableAnimatedMapTile, S
 from engine.npc import Player, sd_from_directory
 import pygame
 
-# TODO: make maps serializable
+from maps import mapgetter
+import sys
+
+# TODO: implement class to contain maps and a game loop, allow for seamless switching between maps
+# TODO: implement in map warping
+# TODO: implement ledges
+# TODO: implement npcs
 # TODO: clean up
+# TODO: optimize
+#       TODO: optimize rendering (only render what's needed in a scalable tile)
+#       TODO: have the new mapcontainer/gameloop class store ticked values
+#       TODO: make animated tiles use a global ticked value
 # TODO: menu ui
-
-def from_ranges(s):
-    ranges_ = s.splitlines()
-    points = []
-    for r in ranges_:
-        if '->' in r:
-            r = r.split(' -> ')
-            x0, y0 = eval(r[0])
-            x1, y1 = eval(r[1])
-            for x in range(x0, x1+1):
-                for y in range (y0, y1+1):
-                    points.append((x, y))
-        else:
-            points.append(eval(r))
-    return points
-
-ranges = '''(6, 7) -> (6, 25)
-(7, 6) -> (17, 6)
-(19, 6) -> (28, 6)
-(17, 5) -> (17, 6)
-(19, 5) -> (20, 6)
-(28, 7) -> (28, 25)
-(10, 9) -> (15, 19)
-(19, 9) -> (24, 19)
-(10, 22) -> (15, 22)
-(10, 25)'''
-
 
 
 player = Player(sd_from_directory('/home/mcxreeper/poop/player'))
-testmap = Map('/home/mcxreeper/poop/towns/pallet.png', player, from_ranges(ranges), (5, 6))
-print(testmap.background.mode)
+route1 = mapgetter('route1', player, (18, 49))
+pallet = mapgetter('pallet_town', player, (11, 18))
 
-# water = AnimatedMapTile((6, 4), '/home/mcxreeper/poop/anim/water')
-puddle = ScalableAnimatedMapTile((12, 20), [(x, y) for x in range(4) for y in range(10)],
-                                 '/home/mcxreeper/poop/anim/water')
-flowers = ScalableAnimatedMapTile(
-    (0, 0), [(14, 0), (25, 0), *[(x, y) for x in range(10, 13) for y in range(17, 19)]],
-    # (10, 13), [(4, -13), (15, -13), *[(x, y) for x in range(3) for y in range(2)]],
-    '/home/mcxreeper/poop/anim/flowers_red',
-    0.3
-)
-
-house_rooves = [
-    ScalableMapTile((10, 8), [(0, 0), (9, 0)], '/home/mcxreeper/poop/buildings/house0/0.png'),
-    ScalableMapTile((11, 8),
-                    [(0, 0), (1, 0), (2, 0), (9, 0), (10, 0), (11, 0)],
-                    '/home/mcxreeper/poop/buildings/house0/1.png'),
-    ScalableMapTile((14, 8), [(0, 0), (9, 0)], '/home/mcxreeper/poop/buildings/house0/2.png'),
-]
-
-oak_roof = [
-    MapTile((18, 14), '/home/mcxreeper/poop/buildings/oak/0.png'),
-    ScalableMapTile((19, 14),
-                    [(0, 0), (1, 0), (2, 0), (3, 0)],
-                    '/home/mcxreeper/poop/buildings/oak/1.png'),
-    MapTile((23, 14), '/home/mcxreeper/poop/buildings/oak/2.png'),
-    MapTile((24, 14), '/home/mcxreeper/poop/buildings/oak/3.png'),
-]
-
-mailboxes = [
-    ScalableMapTile((9, 11), [(0, 0), (9, 0)], '/home/mcxreeper/poop/misc/mailbox.png'),
-]
-
-testmap.tiles[0].append(puddle)
-testmap.tiles[1].append(flowers)
-testmap.tiles[2] += (house_rooves + oak_roof + mailboxes)
+testmap = pallet
 
 
 testmap.start()
@@ -112,9 +62,15 @@ while run:
     elif keys[pygame.K_d]:
         testmap.move(1, 0)
 
-
-
     testmap.tick()
+
+    if testmap is pallet and testmap.dy == 5:
+        route1.map_warp((1, 38), *pallet.warpfrom)
+        testmap = route1
+    if testmap is route1 and testmap.dy == 44:
+        pallet.map_warp((-1, -38), *route1.warpfrom)
+        testmap = pallet
+
     pygameSurface = pilImageToSurface(testmap.render())
     window.fill(0)
     window.blit(pygameSurface, (0, 0))

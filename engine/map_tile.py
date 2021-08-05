@@ -6,7 +6,8 @@ from PIL.Image import Image, open as imopen, new as imnew
 from threading import Timer
 import os
 
-
+def rect(w, h):
+    return [(x, y) for x in range(w) for y in range(h)]
 
 black = imnew('RGBA', (16, 16))
 
@@ -41,6 +42,20 @@ class MapTile:
     def render(self):
         return self.sprite
 
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    @property
+    def width(self):
+        return 16
+
+    @property
+    def height(self):
+        return 16
+
 class ScalableMapTile(MapTile):
     def __init__(self, pos, where=None, sprite=None):
         super(ScalableMapTile, self).__init__(pos, sprite)
@@ -73,6 +88,14 @@ class ScalableMapTile(MapTile):
     def screen_pos(self, cx, cy, fx=0, fy=0):
         return (self.x - cx + 7) * 16 - fx + self._x_offset, \
                (2*self.y - 2 * cy + 9) * 8 - fy - self._y_offset
+
+    @property
+    def width(self):
+        return self._width
+
+    @property
+    def height(self):
+        return self._height
 
 class AnimatedMapTile(MapTile):
     def __init__(self, pos, sprites=None, interval=1):
@@ -146,4 +169,17 @@ class ScalableAnimatedMapTile(AnimatedMapTile):
 
     def screen_pos(self, cx, cy, fx=0, fy=0):
         return (self.x - cx + 7) * 16 - fx + self._x_offset, \
-               (2*self.y - 2 * cy + 9) * 8 - fy - self._y_offset
+               (2*self.y - 2 * cy + 9) * 8 - fy + self._y_offset
+
+    @property
+    def width(self):
+        return self._width
+
+    @property
+    def height(self):
+        return self._height
+
+T = MapTile
+ST = ScalableMapTile
+AT = AnimatedMapTile
+SAT = ScalableAnimatedMapTile
