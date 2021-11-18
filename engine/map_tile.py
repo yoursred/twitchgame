@@ -1,37 +1,48 @@
 """
 Map Tile
 """
+import numpy as np
 from PIL.Image import Image, open as imopen, new as imnew
+import pygame
 
-from threading import Timer
 import os
+
 
 def rect(w, h):
     return [(x, y) for x in range(w) for y in range(h)]
 
+
 black = imnew('RGBA', (16, 16))
+
 
 class MapTile:
     def __init__(self, pos=(0,0), sprite=None):
-        if isinstance(sprite, Image):
+        self.sprites = None
+        self.current_frame = None
+        self.interval = None
+        if isinstance(sprite, pygame.Surface):
             self.sprite = sprite
         else:
-            self.sprite: Image = imopen(sprite)
+            self.sprite: pygame.Surface = pygame.image.load(sprite).convert()
 
-        if self.sprite.size != (16, 16) and self.sprite is not None:
+        self.sprite_size = self.sprite.get_width(), self.sprite.get_width(),
+
+        if self.sprite_size != (16, 16) and self.sprite is not None:
             raise ValueError(
-                f'Provided background image has size {self.sprite.size}, not a multiple of 16'
+                f'Provided background image has size {self.sprite_size}, not a multiple of 16'
             )
 
         self.collision = False
+        self.animated = False
         self.x, self.y = pos
 
     @property
     def pos(self):
         return self.x, self.y
 
-    def screen_pos(self, cx, cy, fx=0, fy=0):
-        return (self.x - cx + 7) * 16 - fx, (2*self.y - 2 * cy + 9) * 8 - fy
+    def screen_pos(self, cx, cy, res, fx=0, fy=0):
+        return (2 * (self.x - cx) + int(np.ceil(res[0]/16)) - 1) * 8 - fx, \
+               (2 * (self.y - cy) + int(np.ceil(res[1]/16)) - 1) * 8 - fy
 
     def interact(self, player):
         pass
@@ -56,6 +67,7 @@ class MapTile:
     def height(self):
         return 16
 
+
 class ScalableMapTile(MapTile):
     def __init__(self, pos, where=None, sprite=None):
         super(ScalableMapTile, self).__init__(pos, sprite)
@@ -74,20 +86,20 @@ class ScalableMapTile(MapTile):
         self._x_offset = min(self._where, key=lambda _: _[0])[0] * 16
         self._y_offset = min(self._where, key=lambda _: _[1])[1] * 16
 
-        self._canvas = imnew('RGBA', (self._width, self._height))
+        self._canvas = pygame.Surface([self._width, self._height], pygame.SRCALPHA) # imnew('RGBA', (self._width, self._height))
 
     def render(self):
         canvas = self._canvas.copy()
 
         for pos in self._where:
-            canvas.paste(self.sprite,
+            canvas.blit(self.sprite,
                          (pos[0]*16 - self._x_offset, pos[1]*16 - self._y_offset))
 
         return canvas
 
-    def screen_pos(self, cx, cy, fx=0, fy=0):
-        return (self.x - cx + 7) * 16 - fx + self._x_offset, \
-               (2*self.y - 2 * cy + 9) * 8 - fy - self._y_offset
+    def screen_pos(self, cx, cy, res, fx=0, fy=0):
+        return (2 * (self.x - cx) + int(np.ceil(res[0]/16)) - 1) * 8 - fx + self._x_offset, \
+               (2 * (self.y - cy) + int(np.ceil(res[1]/16)) - 1) * 8 - fy + self._y_offset
 
     @property
     def width(self):
@@ -96,6 +108,7 @@ class ScalableMapTile(MapTile):
     @property
     def height(self):
         return self._height
+
 
 class AnimatedMapTile(MapTile):
     def __init__(self, pos, sprites=None, interval=1):
@@ -108,39 +121,29 @@ class AnimatedMapTile(MapTile):
             files.sort(key=lambda _:int(_.replace('.png', '')))
             sprites = [os.path.join(path, x) for x in files]
 
-        sprites = [*map(lambda _: _ if isinstance(_, Image) else imopen(_), sprites)]
+        sprites = [
+            *map(lambda _: _ if isinstance(_, pygame.Surface) else pygame.image.load(_).convert(), sprites)
+        ]
 
         sprite = sprites[0] if len(sprites) else black.copy()
 
         super(AnimatedMapTile, self).__init__(pos=pos, sprite=sprite)
 
-        self.sprites = sprites
+        self.sprites: list[pygame.Surface] = sprites
 
         self.current_frame = 0
+        self.animated = True
 
-        self.timer = Timer(1, self.tickframe)
-        self.ticking = False
         self.interval = interval
 
-    def tickframe(self):
-        self.ticking = True
-        self.current_frame = (self.current_frame + 1) % len(self.sprites)
-        self.timer = Timer(self.interval, self.tickframe)
-        self.timer.start()
-
-    def start(self):
-        self.tickframe()
-
-    def stop(self):
-        self.timer.cancel()
-        self.ticking = False
-
     def render(self):
-        return self.sprites[self.current_frame]
+        return self.sprites[self.current_frame].copy()
+
 
 class ScalableAnimatedMapTile(AnimatedMapTile):
     def __init__(self, pos, where=None, sprites=None, interval=1):
         super(ScalableAnimatedMapTile, self).__init__(pos, sprites, interval)
+
 
         if where is None:
             self._where = [(0, 0)]
@@ -156,20 +159,20 @@ class ScalableAnimatedMapTile(AnimatedMapTile):
         self._x_offset = min(self._where, key=lambda _: _[0])[0] * 16
         self._y_offset = min(self._where, key=lambda _: _[1])[1] * 16
 
-        self._canvas = imnew('RGBA', (self._width, self._height))
+        self._canvas = pygame.Surface([self._width, self._height], pygame.SRCALPHA) # imnew('RGBA', (self._width, self._height))
 
     def render(self):
         canvas = self._canvas.copy()
 
         for pos in self._where:
-            canvas.paste(self.sprites[self.current_frame],
-                         (pos[0]*16 - self._x_offset, pos[1]*16 - self._y_offset))
+            canvas.blit(self.sprites[self.current_frame],
+                        (pos[0]*16 - self._x_offset, pos[1]*16 - self._y_offset))
 
         return canvas
 
-    def screen_pos(self, cx, cy, fx=0, fy=0):
-        return (self.x - cx + 7) * 16 - fx + self._x_offset, \
-               (2*self.y - 2 * cy + 9) * 8 - fy + self._y_offset
+    def screen_pos(self, cx, cy, res, fx=0, fy=0):
+        return (2 * (self.x - cx) + int(np.ceil(res[0]/16)) - 1) * 8 - fx + self._x_offset, \
+               (2 * (self.y - cy) + int(np.ceil(res[1]/16)) - 1) * 8 - fy + self._y_offset
 
     @property
     def width(self):
@@ -178,6 +181,7 @@ class ScalableAnimatedMapTile(AnimatedMapTile):
     @property
     def height(self):
         return self._height
+
 
 T = MapTile
 ST = ScalableMapTile

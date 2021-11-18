@@ -2,6 +2,11 @@ from gimpformats.GimpLayer import GimpLayer
 from gimpformats.gimpXcfDocument import GimpDocument
 from PIL.Image import NEAREST
 import numpy as np
+import pygame
+
+def pilImageToSurface(pilImage):
+    return pygame.image.fromstring(
+        pilImage.tobytes(), pilImage.size, pilImage.mode)
 
 def map_from_xcf(path):
     xcf = GimpDocument(path)
@@ -35,5 +40,5 @@ def map_from_xcf(path):
 
     background = layers['background'].image
 
-    return foreground, collisions, background
+    return pilImageToSurface(foreground), collisions, pilImageToSurface(background)
 

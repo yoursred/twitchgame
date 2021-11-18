@@ -1,12 +1,16 @@
 import os
+from typing import Union
+
 from PIL.Image import open as imopen, Image
+import pygame
+
+from engine.animation import PlayerAnimation
+from engine.engine import Engine
+
 """
 NPC and player
 """
 
-"""
-I'm not on wifi, will get it and a new mic very soon
-"""
 
 DIRECTIONS = {
     'north': ( 0, -1),
@@ -14,6 +18,7 @@ DIRECTIONS = {
     'east' : ( 1,  0),
     'west' : (-1,  0)
 }
+
 
 def sd_from_directory(path):
     d = {}
@@ -23,36 +28,77 @@ def sd_from_directory(path):
         _ = d.setdefault(file.split('_')[0], {})
         __ = _.setdefault('anim', {})
         if '_' not in file:
-            _.setdefault('still', imopen(f))
+            _.setdefault('still', pygame.image.load(f).convert_alpha())
         else:
-            __.setdefault(int(file.split('_')[1]), imopen(f))
+            __.setdefault(int(file.split('_')[1]), pygame.image.load(f).convert_alpha())
 
     return d
 
 
 class Player:
     def __init__(self, sprite_dict=None):
+        self.animation: Union[PlayerAnimation, None] = None
         self.sprite_dict = sprite_dict
+        self.facing = 'south'
         self.current_frame = 0
         self.last_moved_leg = 0
+
+        self.parent: Union[Engine, None] = None
 
     def tick(self):
         self.current_frame = (self.current_frame + 1) % 4
 
-    def render(self, moving, blocked, facing, just_moved, f=0):
+    def animation_tick(self):
+        if self.animation is not None:
+            self.animation.tick()
+            if self.animation.done:
+                self.animation = None
+
+    def screen_pos(self, cx, cy, res, fx=0, fy=0):
+        if self.animation is not None:
+            if not self.animation.done:
+                return self.animation.screen_pos(self, cx, cy, res, fx, fy)
+            else:
+                return (res[0] - 16) // 2, res[1] // 2 - 16
+        else:
+            return (res[0] - 16) // 2, res[1] // 2 - 16
+
+    def render_(self, moving, blocked, just_moved, pf, f=0) -> Image:
         if not moving and not blocked:
             if just_moved:
-                copy = self.sprite_dict[facing]['anim'][0].copy()
+                copy = self.sprite_dict[self.facing]['anim'][0].copy()
             else:
-                copy = self.sprite_dict[facing]['still'].copy()
+                copy = self.sprite_dict[self.facing]['still'].copy()
         elif moving:
-            frame = int(f not in range(8)) + 2*self.last_moved_leg
-            copy = self.sprite_dict[facing]['anim'][frame].copy()
+            frame = int(f not in range(9)) + 2 * self.last_moved_leg
+            copy = self.sprite_dict[self.facing]['anim'][frame].copy()
         elif blocked:
-            copy = self.sprite_dict[facing]['anim'][self.current_frame].copy()
+            copy = self.sprite_dict[self.facing]['anim'][self.current_frame].copy()
         else:
-            copy = self.sprite_dict[facing]['still'].copy()
+            copy = self.sprite_dict[self.facing]['still'].copy()
         return copy
+
+    def render(self, moving, blocked, just_moved, pf, f=0) -> Image:
+        if self.animation is not None and not self.animation.done:
+            return self.animation.render(self, moving, blocked, just_moved, pf, f)
+        else:
+            if not moving and not blocked:
+                if just_moved:
+                    copy = self.sprite_dict[self.facing]['anim'][0].copy()
+                else:
+                    copy = self.sprite_dict[self.facing]['still'].copy()
+            elif moving:
+                frame = int(f not in range(8)) + 2*self.last_moved_leg
+                copy = self.sprite_dict[self.facing]['anim'][frame].copy()
+            elif blocked:
+                copy = self.sprite_dict[self.facing]['anim'][self.current_frame].copy()
+            else:
+                copy = self.sprite_dict[self.facing]['still'].copy()
+            return copy
+
+    def animate(self, animation):
+        self.animation = animation
+
 
 class NPC:
     def __init__(self, sprite_dict=None, pos=(0, 0)):
