@@ -1,15 +1,21 @@
 """
 Map
 """
+from typing import Callable, Any, Tuple
+
 import numpy as np
 import pygame
-from PIL.Image import Image, open as imopen, new as imnew
+from pygame.transform import scale
 import time
 
 from engine.map_tile import MapTile
-from engine.scripts import map_from_xcf
+from engine.misc import map_from_xcf
 
 checksameaxis = lambda _, __: (_[0] == __[0] and _[1] != __[1]) ^ (_[0] != __[0] and _[1] == __[1])
+
+
+def scaletup(_: tuple[int, int], __: int) -> tuple[int, int]:
+    return tuple((___ * __ for ___ in _))
 
 
 def getfacing(x, y, e):
@@ -37,12 +43,14 @@ def screen_visible(x0, y0, x1, y1, w, h):
     return x and y
 
 
-black = lambda _: pygame.Surface(_, pygame.SRCALPHA)
+black = lambda _: pygame.Surface(_)
 
 
 class Map:
     def __init__(self, xcf_path=None, background=None, foreground=None, collisions=None, spawn=(0, 0),
-                 warp_data=None):
+                 warp_data=None, parent=None):
+        self.pf_scale = 1
+        self.rs = rs = parent.render_scale
         if xcf_path is not None:
             foreground, collisions, background = map_from_xcf(xcf_path)
         if isinstance(background, str):
@@ -74,15 +82,23 @@ class Map:
                 f'{self.background.get_size()}'
             )
 
+        # Map scaling for subpixel precision
+
+        self.background = scale(background, scaletup(background.get_size(), rs))
+        self.foreground = scale(foreground, scaletup(foreground.get_size(), rs))
+
+        self.canvas = black(scaletup(parent.res, self.rs))
+
         self.size = self.default_collisions.shape
 
         # self.player = player
+        self.parent = parent
         self.tiles: dict[int, list[MapTile]] = {
             0: [],
             1: []
         }
 
-        self.fx, self.fy = 0, 0
+        self.fx_, self.fy_ = 0, 0
         self.pf = 0
         self.cooldown = 0
         self.player_facing = 'south'
@@ -108,6 +124,8 @@ class Map:
     def move(self, x, y, player):
         xy = (self.cx + x, self.cy + y)
 
+        # print(x, y)
+
         if xy[0] not in range(self.size[0]) or xy[1] not in range(self.size[1]):
             player.facing = getfacing(x, y, player.facing)
             self.blocked = True
@@ -126,15 +144,18 @@ class Map:
                 self.moving = True
                 self.dx += x
                 self.dy += y
+                # print(x, y)
                 player.last_moved_leg = int(not player.last_moved_leg)
         elif (checksameaxis(xy, (self.dx, self.dy)) and self.moving) or \
-                 (checksameaxis(xy, (self.cx, self.cy)) and self.moving):
+                (checksameaxis(xy, (self.cx, self.cy)) and self.moving):
             if abs(sum(self.offgrid)) == 0 and self.destination != self.center:
                 self.dx += x
                 self.dy += y
+                # print(x, y)
                 player.last_moved_leg = int(not player.last_moved_leg)
 
     def tick(self, player, pf):
+        self.pf_scale = self.parent.target_fps / 60
         if self.cooldown:
             self.cooldown -= 1
 
@@ -143,30 +164,30 @@ class Map:
         if self.blocked and self.moving:
             self.blocked = False
         if self.blocked:
-            if not (pf % 15):
+            if not (pf % round(15 * self.pf_scale)):
                 player.tick()
                 self.blocked = False
         elif self.moving and self.cy == self.dy:
-            if (self.dx - self.cx) != int(self.fx / 16):
+            if (self.dx - self.cx) != int(self.fx_ / (16 * self.pf_scale)):
                 if self.dx - self.cx > 0:
                     player.facing = 'east'
                 else:
                     player.facing = 'west'
-                self.fx += abs(self.dx - self.cx) // (self.dx - self.cx)
+                self.fx_ += abs(self.dx - self.cx) // (self.dx - self.cx)
             else:
-                self.fx = 0
+                self.fx_ = 0
                 self.cx = self.dx
                 self.moving = False
                 # player.current_frame = 1
         elif self.moving and self.cx == self.dx:
-            if (self.dy - self.cy) != int(self.fy / 16):
+            if (self.dy - self.cy) != int(self.fy_ / (16 * self.pf_scale)):
                 if self.dy - self.cy > 0:
                     player.facing = 'south'
                 else:
                     player.facing = 'north'
-                self.fy += abs(self.dy - self.cy) // (self.dy - self.cy)
+                self.fy_ += abs(self.dy - self.cy) // (self.dy - self.cy)
             else:
-                self.fy = 0
+                self.fy_ = 0
                 self.cy = self.dy
                 self.moving = False
         for tile in self.tiles[0]:
@@ -178,48 +199,37 @@ class Map:
                 if not pf % tile.interval:
                     tile.current_frame = (tile.current_frame + 1) % len(tile.sprites)
 
-    def render(self, player, res, pf, noplayer=False):
-        blackcopy = black(res).copy()
-        copy = self.background.copy()
+    def render(self, player, res, pf, tfps, noplayer=False):
+        xf = (-2 * self.cx + round(res[0] / 16) - 1) * 8 * self.rs - self.fx
+        yf = (-2 * self.cy + round(res[1] / 16) - 1) * 8 * self.rs - self.fy
+        self.canvas.fill((0, 0, 0))
 
         for tile in self.tiles[0]:
             x0, y0 = tile.screen_pos(self.cx, self.cy, res, self.fx, self.fy)
             x1, y1 = x0 + tile.width, y0 + tile.height
             if screen_visible(x0, y0, x1, y1, *res):
-                blackcopy.blit(tile.render(), (x0, y0))
+                self.canvas.blit(tile.render(), (x0, y0))
 
-        blackcopy.blit(
-            copy,
-            (
-                (-2 * self.cx + int(np.ceil(res[0]/16)) - 1) * 8 - self.fx,
-                (-2 * self.cy + int(np.ceil(res[1]/16)) - 1) * 8 - self.fy
-            )
-        )
+        self.canvas.blit(self.background, (xf, yf))
 
         for tile in self.tiles[1]:
             x0, y0 = tile.screen_pos(self.cx, self.cy, res, self.fx, self.fy)
             x1, y1 = x0 + tile.width, y0 + tile.height
             if screen_visible(x0, y0, x1, y1, *res):
-                blackcopy.blit(tile.render(), (x0, y0))
+                self.canvas.blit(tile.render(), (x0, y0))
 
         if not noplayer:
             player_sprite = player. \
-                render(self.moving, self.blocked, self.just_moved, pf, abs(self.fx + self.fy))
+                render(self.moving, self.blocked, self.just_moved, pf, abs(self.fx_ + self.fy_), tfps)
 
-            blackcopy.blit(player_sprite, player.screen_pos(self.cx, self.cy, res, self.fx, self.fy))
+            self.canvas.blit(player_sprite, player.screen_pos(self.cx, self.cy, res, self.fx, self.fy))
 
-        blackcopy.blit(
-            self.foreground,
-            (
-                (-2 * self.cx + int(np.ceil(res[0]/16)) - 1) * 8 - self.fx,
-                (-2 * self.cy + int(np.ceil(res[1]/16)) - 1) * 8 - self.fy
-            )
-        )
+        self.canvas.blit(self.foreground, (xf, yf))
 
         if self.just_moved:
             self.just_moved -= 1
         self.lastframe = time.time()
-        return blackcopy
+        return self.canvas
 
     def map_warp(self, o, m, c, d, f):
         if m:
@@ -228,7 +238,7 @@ class Map:
         else:
             self.cx, self.cy = c[0] + o[0], c[1] + o[1]
             self.dx, self.dy = d[0] + o[0], d[1] + o[1]
-        self.fx, self.fy = f
+        self.fx_, self.fy_ = f
 
     @property
     def warpfrom(self):
@@ -252,11 +262,11 @@ class Map:
 
     @property
     def offgrid(self):
-        return self.fx, self.fy
+        return self.fx_, self.fy_
 
     @offgrid.setter
     def offgrid(self, value):
-        self.fx, self.fy = value
+        self.fx_, self.fy_ = value
 
     @property
     def fps(self):
@@ -267,4 +277,11 @@ class Map:
         else:
             return float('inf')
 
+    @property
+    def fx(self):
+        return round(self.rs * self.fx_ / self.pf_scale)
+
+    @property
+    def fy(self):
+        return round(self.rs * self.fy_ / self.pf_scale)
 

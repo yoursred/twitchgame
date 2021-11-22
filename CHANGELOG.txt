@@ -1,0 +1,8 @@
+earlier: TBD
+test-2-4: fps now controlable, not recommended to change
+          Switched to color keys from alpha blending, added subpixel rendering
+          Added `max_fps`
+          animations are now timescaled
+          added map caching
+
+future:   idfk

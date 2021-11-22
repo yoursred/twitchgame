@@ -2,6 +2,7 @@
 
 import pygame
 
+
 class Dialogue:
     def __init__(self, text: str, font: pygame.font.Font, shadow: pygame.font.Font):
         self.lines = text.splitlines()

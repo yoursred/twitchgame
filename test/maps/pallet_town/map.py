@@ -11,10 +11,20 @@ def local_path(path):
 # Warp callbacks
 
 
-def fade(engine, warpto, offset, mode):
+def fade(engine, warpto, offset, mode, timescale):
     engine.maps[warpto].map_warp(offset, mode, *engine.current_map.warpfrom)
     engine._current_map = warpto
-    engine.animate(FadeToBlack(60))
+    engine.animate(FadeToBlack(60*timescale))
+
+
+def to_player_house(engine, warpto, offset, mode, timescale):
+    # engine.maps[warpto].map_warp(offset, mode, *engine.current_map.warpfrom)
+    engine._current_map = warpto
+    engine.current_map.dx = 22
+    engine.current_map.dy = 9
+    engine.current_map.fx_ = 0
+    engine.current_map.fy_ = 0
+
 
 
 # Map xcf location
@@ -40,16 +50,18 @@ warp = {
     },
     11: {
         None: (False, None, None, None),
-        17: ('player_house', (22, 9), fade, True)
+        # 17: ('player_house', (22, 8), fade, True)
+        17: ('player_house', (22, 10), to_player_house, True)
     }
 }
 
 
-def get_map():
+def get_map(parent=None):
     map_ =  Map(
         local_path(xcf),
         spawn=(11, 18),
-        warp_data=warp
+        warp_data=warp,
+        parent=parent
     )
 
     map_.tiles[0] += l0

@@ -12,15 +12,15 @@ from maps import get_all_maps
 #       TODO: map caching
 # TODO: add connectivity with smogon servers
 # TODO: menu ui
-# TODO: fps independent game speed
+# TODO: scale sprites to get subpixel movement at higher frame rates
 
-engine = Engine(None, None, 'pallet_town', res=(288, 160))
-maps = get_all_maps()
-d = sd_from_directory('/home/yoursred/Documents/Projects/twitchgame/sample_resources/player')
-print(d)
-player = Player(d)
+engine = Engine(None, None, 'pallet_town', res=(288, 160), target_fps=60)
+maps = get_all_maps(engine)
+d = sd_from_directory('/home/yoursred/Documents/Projects/twitchgame/sample_resources/player', 6)
+# print(d)
+player = Player(d, parent=engine)
 engine.player = player
-engine.player.parent = engine
+# engine.player.parent = engine
 engine.maps = maps
 
 # print(engine)

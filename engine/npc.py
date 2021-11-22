@@ -20,7 +20,7 @@ DIRECTIONS = {
 }
 
 
-def sd_from_directory(path):
+def sd_from_directory(path, rs=1):
     d = {}
     for file in os.listdir(path):
         f = os.path.join(path, file)
@@ -28,22 +28,28 @@ def sd_from_directory(path):
         _ = d.setdefault(file.split('_')[0], {})
         __ = _.setdefault('anim', {})
         if '_' not in file:
-            _.setdefault('still', pygame.image.load(f).convert_alpha())
+            z = pygame.image.load(f).convert()
+            z.set_colorkey((255, 0, 255))
+            _.setdefault('still', pygame.transform.scale(z, (16 * rs, 20 * rs)))
         else:
-            __.setdefault(int(file.split('_')[1]), pygame.image.load(f).convert_alpha())
+            z = pygame.image.load(f).convert()
+            z.set_colorkey((255, 0, 255))
+            __.setdefault(int(file.split('_')[1]), pygame.transform.scale(z, (16 * rs, 20 * rs)))
 
     return d
 
 
 class Player:
-    def __init__(self, sprite_dict=None):
+    def __init__(self, sprite_dict=None, parent=None):
         self.animation: Union[PlayerAnimation, None] = None
         self.sprite_dict = sprite_dict
         self.facing = 'south'
         self.current_frame = 0
         self.last_moved_leg = 0
 
-        self.parent: Union[Engine, None] = None
+        self.parent: Union[Engine, None] = parent
+
+        self.rs = self.parent.render_scale
 
     def tick(self):
         self.current_frame = (self.current_frame + 1) % 4
@@ -59,9 +65,9 @@ class Player:
             if not self.animation.done:
                 return self.animation.screen_pos(self, cx, cy, res, fx, fy)
             else:
-                return (res[0] - 16) // 2, res[1] // 2 - 16
+                return self.rs * ((res[0] - 16) // 2), self.rs * (res[1] // 2 - 16)
         else:
-            return (res[0] - 16) // 2, res[1] // 2 - 16
+            return self.rs * ((res[0] - 16) // 2), self.rs * (res[1] // 2 - 16)
 
     def render_(self, moving, blocked, just_moved, pf, f=0) -> Image:
         if not moving and not blocked:
@@ -78,7 +84,7 @@ class Player:
             copy = self.sprite_dict[self.facing]['still'].copy()
         return copy
 
-    def render(self, moving, blocked, just_moved, pf, f=0) -> Image:
+    def render(self, moving, blocked, just_moved, pf, f=0, tfps=30) -> Image:
         if self.animation is not None and not self.animation.done:
             return self.animation.render(self, moving, blocked, just_moved, pf, f)
         else:
@@ -88,7 +94,7 @@ class Player:
                 else:
                     copy = self.sprite_dict[self.facing]['still'].copy()
             elif moving:
-                frame = int(f not in range(8)) + 2*self.last_moved_leg
+                frame = int((f*60//tfps) not in range(8)) + 2 * self.last_moved_leg
                 copy = self.sprite_dict[self.facing]['anim'][frame].copy()
             elif blocked:
                 copy = self.sprite_dict[self.facing]['anim'][self.current_frame].copy()

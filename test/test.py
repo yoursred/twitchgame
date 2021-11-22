@@ -16,9 +16,9 @@ import sys
 #
 # testmap.start()
 #
-# def pilImageToSurface(pilImage):
+# def pilImageToSurface(pil_image):
 #     return pygame.image.fromstring(
-#         pilImage.tobytes(), pilImage.size, pilImage.mode).convert()
+#         pil_image.tobytes(), pil_image.size, pil_image.mode).convert()
 #
 # pygame.init()
 # window = pygame.display.set_mode((240, 160))

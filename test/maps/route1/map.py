@@ -88,11 +88,12 @@ for x, y in ledges:
         warp[x][y] = ('south', None, ledge1, None)
 
 
-def get_map():
+def get_map(parent=None):
     map_ =  Map(
         local_path(xcf),
         spawn=(18, 49),
-        warp_data=warp
+        warp_data=warp,
+        parent=parent
     )
 
     map_.tiles[0] += l0
